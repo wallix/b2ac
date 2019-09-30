@@ -490,7 +490,7 @@ def print_directory_server(server, id, tab, wac):
     wac.write('{}}}'.format(tab))
 
 def print_directory_servers(wac, tab):
-    wac.write('{}"directory servers": ['.format(tab))
+    wac.write('{}"directory_servers": ['.format(tab))
     comma = "\n"
     for server_name, id in _directory_server_ids.items():
         wac.write(comma)
