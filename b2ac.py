@@ -85,6 +85,8 @@ _application_ids = {}
 _jump_server_farm_ids = {}
 _jump_server_farm_targets = {}
 
+_credential_recovery = False
+
 _uuids = []
 
 class Based:
@@ -98,7 +100,10 @@ class Based:
     base_url = None
 
     def request(self, method, url, *args, **kwargs):
-        url = urljoin(self.base_url, url + '?limit=-1')
+        url = urljoin(self.base_url, url )
+        if not 'params' in kwargs:
+            kwargs['params'] = {}
+        kwargs['params']['limit'] = -1
         return super(Based, self).request(method, url, *args, **kwargs)
 
 class BasedSession(Based, requests.Session):
@@ -144,7 +149,24 @@ def print_account(account, id, tab, wac):
         wac.write('{}  "device_id": "{}",\n'.format(tab, _device_ids[account['device']]))
     wac.write('{}  "name": {},\n'.format(tab, json.dumps(account['account_name'])))
     wac.write('{}  "login": {},\n'.format(tab, json.dumps(account['account_login'])))
+    wac.write('{}  "has_auto_password_change": {},\n'.format(tab, json.dumps(account['auto_change_password'])))
+   
+    if not account['application']:
+        wac.write('{}  "auto_change_ssh_key": {},\n'.format(tab, json.dumps(account['auto_change_ssh_key'])))
+
+    global  _credential_recovery
+    if _credential_recovery and 'credentials' in account:
+        for credential in account['credentials']:
+            if credential['type'] == 'password':
+                wac.write('{}  "password": {},\n'.format(tab, json.dumps(credential['password'])))
+            elif credential['type'] == 'ssh_key':
+                wac.write('{}  "sss_key": {{\n'.format(tab))
+                wac.write('{}    "content": {},\n'.format(tab, json.dumps(credential['private_key'])))
+                wac.write('{}    "ssh_title": {}\n'.format(tab, json.dumps(credential['key_type'])))
+                wac.write('{}  }},\n'.format(tab))
+
     wac.write('{}  "description": {}\n'.format(tab, json.dumps(account['description'])))
+
     wac.write('{}}}'.format(tab))
 
 def print_accounts(wac, tab):
@@ -643,11 +665,11 @@ def register_device(device_name, service_name):
                     _connection_policy_ids[policy_name] = generate_id()
 
 def get_accounts(session):
-    response = session.get('accounts')
+    params = {'passwords': True} if _credential_recovery else {}
+    response = session.get('accounts', params=params)
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
     
     accounts = json.loads(response.content.decode('utf-8'))
 
@@ -663,8 +685,7 @@ def get_devices(session):
     response = session.get('devices')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
     
     devices = json.loads(response.content.decode('utf-8'))
 
@@ -688,8 +709,7 @@ def get_applications(session):
     response = session.get('applications')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
     
     applications = json.loads(response.content.decode('utf-8'))
 
@@ -726,8 +746,7 @@ def get_connection_policies(session):
     response = session.get('connectionpolicies')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
     
     connection_policies = json.loads(response.content.decode('utf-8'))
     for policy in connection_policies:
@@ -738,8 +757,7 @@ def get_external_auths(session):
     response = session.get('externalauths')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
     
     external_auths = json.loads(response.content.decode('utf-8'))
     for auth in external_auths:
@@ -750,8 +768,7 @@ def get_ldap_domains(session):
     response = session.get('ldapdomains')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
     
     directories = json.loads(response.content.decode('utf-8'))
     for directory in directories:
@@ -769,8 +786,7 @@ def get_jump_server_farms(session):
     response = session.get('clusters')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
     
     jump_server_farms = json.loads(response.content.decode('utf-8'))
     
@@ -809,8 +825,7 @@ def get_target_groups(session):
     response = session.get('targetgroups')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
     
     groups = json.loads(response.content.decode('utf-8'))
 
@@ -894,8 +909,7 @@ def get_user_groups(session):
     response = session.get('usergroups')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
     
     groups = json.loads(response.content.decode('utf-8'))
 
@@ -910,8 +924,7 @@ def get_authorizations(session):
     response = session.get('authorizations')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
     
     authorizations = json.loads(response.content.decode('utf-8'))
 
@@ -924,8 +937,7 @@ def get_ldap_mappings(session):
     response = session.get('ldapmappings')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
     
     mappings = json.loads(response.content.decode('utf-8'))
 
@@ -939,8 +951,7 @@ def get_version(session):
     response = session.get('version')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
 
     versions = json.loads(response.content.decode('utf-8'))
 
@@ -950,8 +961,7 @@ def get_license(session):
     response = session.get('license')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
 
     info = json.loads(response.content.decode('utf-8'))
 
@@ -961,12 +971,46 @@ def get_expiration_date(session):
     response = session.get('licenseinfo')
 
     if response.status_code != 200:
-        sys.stderr.write(str(response))
-        return None
+        api_fatal_error(response)
 
     info = json.loads(response.content.decode('utf-8'))
 
     return info['expiration_date']
+
+def check_rights(session, credentials):
+    response = session.get('preferences')
+
+    if response.status_code != 200:
+        api_fatal_error(response)
+
+    preferences = json.loads(response.content.decode('utf-8'))
+
+    rights = preferences['profile_rights']
+
+    requires = {'users', 'user_groups', 'devices', 'target_groups', 'authorizations', 'profiles', 'wab_settings'}
+
+    for right in requires:
+        if not rights[right]:
+            sys.stderr.write('\033[1;31mError\033[0m: user needs {} right\n'.format(right))
+            return False
+    
+    if credentials:
+        if rights['credential_recovery']:
+            global _credential_recovery
+            _credential_recovery = True
+        else:
+            sys.stderr.write('\033[1;31mError\033[0m: user needs credential_recovery right\n')
+            return False
+    return True
+
+
+def api_fatal_error(response):
+    error = json.loads(response.content.decode('utf-8'))
+    if error:
+        sys.stderr.write("\033[1;31mError: {}:\033[0m {}\n".format(error['error'], error['description']))
+    else:
+        sys.stderr.write("\033[1;31m{}\033[0m\n".format(str(response)))
+    sys.exit(-1)
 
 def emit_json_error(e: json.decoder.JSONDecodeError, doc):
     doc.seek(0)
@@ -975,15 +1019,17 @@ def emit_json_error(e: json.decoder.JSONDecodeError, doc):
     n = 5
     for line in doc:
         if lineno >= e.lineno - n and lineno <= e.lineno + n :
-            print(line, end='')
+            sys.stderr.write(line)
         if lineno == e.lineno:
-            print("{}\033[1;31;40m^\033[0m".format(" " * (e.colno - 1)))
+            sys.stderr.write("{}\033[1;31m^\033[0m\n".format(" " * (e.colno - 1)))
         if  lineno == e.lineno + n:
             return
         lineno = lineno + 1
 
 def main():
     parser = argparse.ArgumentParser("Generate a configuration file for WALLIX admin center from a live bastion.")
+    parser.add_argument("-c", "--credentials", dest='credentials', action='store_true', required=False,
+      help="retrieve account credentials; required credential_recovery rights and 'Credential recovery' REST API option")
     parser.add_argument("-H", "--host", action='store', required=True,  help="bastion host")
     parser.add_argument("-u", "--user", action='store', default=getpass.getuser(), required=False,  help="bastion user's name")
     parser.add_argument("-p", "--password", action='store', required=False,  help="bastion user's password")
@@ -1003,6 +1049,9 @@ def main():
     session.auth = (args.user, args.password)
     session.verify = False
     urllib3.disable_warnings()
+
+    if not check_rights(session, credentials=args.credentials):
+        sys.exit(-1)
 
     bastion = {}
     bastion['name'] = args.host.split('.')[0]
@@ -1079,6 +1128,7 @@ def main():
                 json.dump(data, outfile, indent=2)
         except json.decoder.JSONDecodeError as e:
             emit_json_error(e, wac)
+            sys.exit(1)
         finally:
             wac.close()
 
