@@ -609,19 +609,21 @@ def print_target_group_refs(wac, tab):
             comma = ",\n"
         for target in group['session']['account_mappings']:
             wac.write(comma)
-            target_name = target['device'] + ':' + target ['service']
             if target['device']:
+                target_name = target['device'] + ':' + target ['service']
                 print_target_ref(id, _account_mapping_target_ids[target_name], "account_mapping_targets", tab + "  ", wac)
             elif target['application']:
-                    print_target_ref(id, _app_account_mapping_target_ids[target_name], "application_account_mapping_targets", tab + "  ", wac)
+                target_name = target['application']
+                print_target_ref(id, _app_account_mapping_target_ids[target_name], "application_account_mapping_targets", tab + "  ", wac)
             comma = ",\n"
         for target in group['session']['interactive_logins']:
             wac.write(comma)
-            target_name = target['device'] + ':' + target ['service']
             if target['device']:
+                target_name = target['device'] + ':' + target ['service']
                 print_target_ref(id, _interactive_login_target_ids[target_name], "interactive_login_targets", tab + "  ", wac)
             elif target['application']:
-                    print_target_ref(id, _app_interactive_login_target_ids[target_name], "application_interactive_login_targets", tab + "  ", wac)
+                target_name = target['application']
+                print_target_ref(id, _app_interactive_login_target_ids[target_name], "application_interactive_login_targets", tab + "  ", wac)
             comma = ",\n"
         for target in group['session']['scenario_accounts']: 
             wac.write(comma)
@@ -727,20 +729,21 @@ def get_applications(session):
                 farm['account_mappings'] = []
                 farm['interactive_logins'] = []
                 if len(parts) == 1:
-                    device, service = parts[0].split(':')
-                    farm_name = 'farm_am_' + device
+                    device_name, service_name = parts[0].split(':')
+                    farm_name = 'farm_am_' + device_name
                     farm['account_mappings'] = [target]
                 elif len(parts) == 2:
-                    device, service = parts[1].split(':')
-                    farm_name = 'farm_il_' + device
+                    device_name, service_name = parts[1].split(':')
+                    farm_name = 'farm_il_' + device_name
                     farm['interactive_logins'] = [target]
                 else:
-                    device, service = parts[2].split(':')
-                    farm_name = 'farm_' + device
-                    farm['accounts'] = [target]
+                    device_name, service_name = parts[2].split(':')
+                    farm_name = 'farm_' + device_name
+                    farm['accounts'] = [target]                 
+                
                 farm['cluster_name'] = farm_name
                 application['target'] = farm_name
-                _jump_server_farms[farm_name] = farm
+                register_farm(farm)
 
 def get_connection_policies(session):
     response = session.get('connectionpolicies')
@@ -782,6 +785,38 @@ def get_ldap_domains(session):
             directory['type'] = "Active Directory" if server['is_active_directory'] else "LDAP"
             directory['ldap_base'] = server['ldap_base']
 
+def register_farm(farm):
+    farm_name = farm['cluster_name'] 
+    _jump_server_farms[farm_name] = farm
+    if  'accounts' in farm:
+        for target_name in farm['accounts']:
+            if not target_name in _account_targets:
+                account_name, domain_name, devnserv = target_name.split('@')
+                device_name, service_name = devnserv.split(':')
+                domain_type = 'global' if _accounts.get(account_name + '@' + domain_name, None) else 'local'
+                _account_targets[target_name] = { 'account' : account_name, 'domain': domain_name,
+                        'domain_type' : domain_type , 'device': device_name , 'service': service_name,
+                        'application' : None}
+                _account_target_ids[target_name] = generate_id()
+                register_device(device_name, service_name)
+    if 'account_mappings' in farm:
+        for target_name in farm['account_mappings']:
+            if not target_name in _account_mapping_targets:
+                device_name, service_name = target_name.split(':')
+                _account_mapping_targets[target_name] = {'device': device_name , 'service': service_name,
+                        'application' : None}
+                _account_mapping_target_ids[target_name] = generate_id()
+                register_device(device_name, service_name)
+    if 'interactive_logins' in farm:
+        for target_name in farm['interactive_logins']:
+            if not target_name in _interactive_login_targets:
+                account_name, devnserv = target_name.split('@')
+                device_name, service_name = devnserv.split(':')
+                _interactive_login_targets[target_name] = {'device': device_name , 'service': service_name,
+                        'application' : None}
+                _interactive_login_target_ids[target_name] = generate_id()
+                register_device(device_name, service_name)
+
 def get_jump_server_farms(session):
     response = session.get('clusters')
 
@@ -791,35 +826,7 @@ def get_jump_server_farms(session):
     jump_server_farms = json.loads(response.content.decode('utf-8'))
     
     for farm in jump_server_farms:
-        farm_name = farm['cluster_name'] 
-        _jump_server_farms[farm_name] = farm
-        if  'accounts' in farm:
-            for target_name in farm['accounts']:
-                if not target_name in _account_targets:
-                    account_name, domain_name, devnserv = target_name.split('@')
-                    device_name, service_name = devnserv.split(':')
-                    domain_type = 'global' if _accounts.get(account_name + '@' + domain_name, None) else 'local'
-                    _account_targets[target_name] = { 'account' : account_name, 'domain': domain_name,
-                         'domain_type' : domain_type , 'device': device_name , 'service': service_name,
-                         'application' : None}
-                    _account_target_ids[target_name] = generate_id()
-                    register_device(device_name, service_name)
-        if 'account_mappings' in farm:
-            for target_name in farm['account_mappings']:
-                if not target_name in _account_mapping_targets:
-                    device_name, service_name = target_name.split(':')
-                    _account_mapping_targets[target_name] = {'device': device_name , 'service': service_name,
-                         'application' : None}
-                    _account_mapping_target_ids[target_name] = generate_id()
-                    register_device(device_name, service_name)
-        if 'interactive_logins' in farm:
-            for target_name in farm['interactive_logins']:
-                if not target_name in _account_mapping_targets:
-                    device_name, service_name = target_name.split(':')
-                    interactive_login_targets[target_name] = {'device': device_name , 'service': service_name,
-                         'application' : None}
-                    interactive_login_target_ids[target_name] = generate_id()
-                    register_device(device_name, service_name)
+        register_farm(farm)
 
 def get_target_groups(session):
     response = session.get('targetgroups')
